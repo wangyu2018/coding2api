@@ -7,7 +7,7 @@ import { useDialogFocus } from "../hooks/useDialogFocus";
 import { safeHttpUrl } from "../lib/safeUrl";
 import { Button, Field, Input, Notice, Select, Tabs, Textarea } from "../ui";
 
-/** 支持「登录渠道账号」按钮 / JSON 导入下拉的渠道（有 poll 轨道或需人工导入的渠道）。 */
+/** 支持「登录渠道账号」按钮的渠道（有 OAuth/poll 轨道的渠道）。 */
 const LOGIN_PROVIDERS: Provider[] = [
   "codebuddy",
   "codebuddy_intl",
@@ -17,7 +17,10 @@ const LOGIN_PROVIDERS: Provider[] = [
   "officeace",
 ];
 
-type TabValue = "login" | "import";
+/** JSON 导入下拉的渠道：与登录渠道一致（openai_compat 有独立的自定义上游 tab）。 */
+const IMPORT_PROVIDERS: Provider[] = LOGIN_PROVIDERS;
+
+type TabValue = "login" | "compat" | "import";
 
 /** 只允许 http(s) 授权地址：上游返回的 auth_url 若为 `javascript:` / `data:`
  * 等被赋给弹窗 location 会在弹窗（继承本页 origin）执行脚本。
@@ -31,7 +34,7 @@ function safeAuthUrl(raw: string | undefined): string | null {
 }
 
 /**
- * 添加凭证对话框：登录渠道 / JSON 导入两分区 + 免费层一键补回。
+ * 添加凭证对话框：登录渠道 / 自定义上游 / JSON 导入三分区 + 免费层一键补回。
  *
  * 取代原先常驻页面底部的「登录渠道账号」「导入凭证」两个面板——添加凭证
  * 是低频动作，不该常驻占屏。登录轮询 state 与 timer 全部收在这里：
@@ -76,6 +79,10 @@ export function AddCredentialDialog({
   const [nickname, setNickname] = useState("");
   const [raw, setRaw] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  // 通用上游（openai_compat）结构化表单：替代手写 JSON
+  const [compatBaseUrl, setCompatBaseUrl] = useState("");
+  const [compatApiKey, setCompatApiKey] = useState("");
+  const [compatModels, setCompatModels] = useState<string[]>([]);
   // TRAE 轮询要比较「登录发起时 vs 现在」的凭证数量；ref 让 interval 里
   // 读到的始终是最新值而不触发重渲染。
   const credentialCountRef = useRef(credentialCount);
@@ -247,6 +254,33 @@ export function AddCredentialDialog({
     }
   };
 
+  const submitCompat = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setImportError(null);
+    const baseUrl = compatBaseUrl.trim();
+    if (!baseUrl) {
+      setImportError("请填写上游地址，例如 https://open.bigmodel.cn/api/paas/v4");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.importCredential("openai_compat", {
+        base_url: baseUrl,
+        api_key: compatApiKey.trim(),
+        models: compatModels,
+      }, nickname);
+      setCompatBaseUrl("");
+      setCompatApiKey("");
+      setCompatModels([]);
+      setNickname("");
+      onImported("凭证已导入。");
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "导入失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitImport = async (event: React.FormEvent) => {
     event.preventDefault();
     setImportError(null);
@@ -307,6 +341,7 @@ export function AddCredentialDialog({
           onChange={(value) => setTab(value as TabValue)}
           options={[
             { value: "login", label: "登录渠道" },
+            { value: "compat", label: "自定义上游" },
             { value: "import", label: "JSON 导入" },
           ]}
         />
@@ -447,6 +482,69 @@ export function AddCredentialDialog({
               </div>
             </div>
           </div>
+        ) : tab === "compat" ? (
+          <form onSubmit={submitCompat} className="mt-4 space-y-3" data-testid="add-credential-compat">
+            <p className="text-xs text-muted-foreground">
+              任意 OpenAI 兼容上游：智谱 GLM / DeepSeek / MiniMax / 豆包 / devin-2api / one-api 等，
+              填 Base URL 和 Key 即可接入，调度和免费渠道同池。
+            </p>
+            <div className="w-48">
+              <Field label="昵称（可选）" htmlFor="compat-nickname-input">
+                <Input
+                  id="compat-nickname-input"
+                  value={nickname}
+                  data-testid="compat-nickname"
+                  onChange={(event) => setNickname(event.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="space-y-3" data-testid="import-openai-compat">
+              <Field label="上游地址（base_url）" htmlFor="compat-base-url">
+                <Input
+                  id="compat-base-url"
+                  value={compatBaseUrl}
+                  data-testid="compat-base-url"
+                  placeholder="https://open.bigmodel.cn/api/paas/v4"
+                  onChange={(event) => setCompatBaseUrl(event.target.value)}
+                />
+              </Field>
+              <Field label="API Key" htmlFor="compat-api-key">
+                <Input
+                  id="compat-api-key"
+                  value={compatApiKey}
+                  data-testid="compat-api-key"
+                  type="password"
+                  placeholder="sk-..."
+                  onChange={(event) => setCompatApiKey(event.target.value)}
+                />
+              </Field>
+              <Field
+                label="模型白名单（可选，回车分隔）"
+                htmlFor="compat-models"
+                hint="留空则自动拉取上游 /models；填写后只暴露这些模型，如 glm-4.6"
+              >
+                <Textarea
+                  rows={3}
+                  id="compat-models"
+                  value={compatModels.join("\n")}
+                  data-testid="compat-models"
+                  className="font-mono text-xs"
+                  placeholder={"glm-4.6\nglm-4.5-air"}
+                  onChange={(event) =>
+                    setCompatModels(event.target.value.split("\n").map((s) => s.trim()).filter(Boolean))
+                  }
+                />
+              </Field>
+            </div>
+            {importError && (
+              <div data-testid="import-error">
+                <Notice tone="danger">{importError}</Notice>
+              </div>
+            )}
+            <Button type="submit" variant="primary" disabled={busy} data-testid="compat-submit">
+              添加
+            </Button>
+          </form>
         ) : (
           <form onSubmit={submitImport} className="mt-4 space-y-3" data-testid="add-credential-import">
             <div className="flex flex-wrap gap-3">
@@ -458,7 +556,7 @@ export function AddCredentialDialog({
                     data-testid="import-provider"
                     onChange={(event) => setImportProvider(event.target.value as Provider)}
                   >
-                    {LOGIN_PROVIDERS.map((item) => (
+                    {IMPORT_PROVIDERS.map((item) => (
                       <option key={item} value={item}>
                         {PROVIDER_LABEL[item]}
                       </option>

@@ -99,6 +99,8 @@ from .provider.kilo.client import KiloClient, KiloProvider
 from .provider.officeace import OfficeAceProvider
 from .provider.officeace.client import OfficeAceClient
 from .provider.officeace.oauth import OfficeAceOAuth
+from .provider.openai_compat import OpenAICompatProvider
+from .provider.openai_compat.client import OpenAICompatClient
 from .provider.proxy import parse_provider_proxies
 from .provider.qoder import QoderProvider
 from .provider.qoder.auth import QoderOAuth
@@ -453,6 +455,10 @@ def build_app(settings: Settings | None = None, *, providers: dict | None = None
             client=OfficeAceClient(cloud_base=_officeace_endpoint(config),
                                    proxy=proxies.get("officeace")),
             pacer=officeace_pacer),
+        # 通用 OpenAI 兼容渠道：base_url/api_key 随凭证行传入（GLM/DeepSeek/
+        # devin-2api 等），不限速——付费上游不需要 Kilo 那种全局节流。
+        "openai_compat": OpenAICompatProvider(
+            client=OpenAICompatClient(proxy=proxies.get("openai_compat"))),
     }
     # 默认装配路径（生产）才种子无凭证渠道的虚拟凭证：测试注入自定义 registry
     # 时不应凭空多出一条无对应 provider 的凭证行。

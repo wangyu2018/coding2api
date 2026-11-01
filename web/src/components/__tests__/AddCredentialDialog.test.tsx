@@ -33,6 +33,34 @@ describe("AddCredentialDialog", () => {
     expect(screen.getByTestId("start-login-codebuddy")).toBeInTheDocument();
   });
 
+  it("自定义上游独立 tab：结构化字段替代手写 JSON", async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body ?? "")));
+      return jsonResponse({ id: "cred_x" });
+    }));
+    const props = renderDialog();
+    await userEvent.click(screen.getByTestId("add-credential-tab-compat"));
+
+    // 空 base_url 本地拦截
+    await userEvent.click(screen.getByTestId("compat-submit"));
+    expect(screen.getByTestId("import-error")).toHaveTextContent("请填写上游地址");
+    expect(props.onImported).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByTestId("compat-base-url"), "https://open.bigmodel.cn/api/paas/v4");
+    await userEvent.type(screen.getByTestId("compat-api-key"), "sk-test");
+    await userEvent.click(screen.getByTestId("compat-submit"));
+    expect(bodies[0]).toMatchObject({
+      provider: "openai_compat",
+      credential: {
+        base_url: "https://open.bigmodel.cn/api/paas/v4",
+        api_key: "sk-test",
+        models: [],
+      },
+    });
+    expect(props.onImported).toHaveBeenCalledWith("凭证已导入。");
+  });
+
   it("非法 JSON 本地拦截（不触发 onImported）", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({})));
     renderDialog();

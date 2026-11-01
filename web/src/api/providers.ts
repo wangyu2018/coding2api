@@ -16,6 +16,7 @@ export const PROVIDER_LABEL: Record<Provider, string> = {
   qoder: "Qoder",
   codearts: "CodeArts",
   officeace: "OfficeAce",
+  openai_compat: "自定义上游",
 };
 
 /** 模型下拉里的渠道缩写（如 `CB x0.29`）。 */
@@ -28,6 +29,7 @@ export const PROVIDER_ABBR: Record<Provider, string> = {
   qoder: "QD",
   codearts: "CA",
   officeace: "OA",
+  openai_compat: "UC",
 };
 
 /**
@@ -45,6 +47,7 @@ export const PROVIDER_CHART_COLOR: Record<Provider, string> = {
   qoder: "var(--chart-5)",
   codearts: "var(--chart-6)",
   officeace: "var(--chart-8)",
+  openai_compat: "var(--chart-9)",
 };
 
 /** 未知渠道（老数据/未来渠道）的兜底色。 */
@@ -67,6 +70,7 @@ export const PROVIDER_ORDER: Provider[] = [
   "qoder",
   "codearts",
   "officeace",
+  "openai_compat",
 ];
 
 /** 渠道排序权重；未知渠道排在已知渠道之后。 */

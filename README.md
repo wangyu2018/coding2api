@@ -1,6 +1,6 @@
 # Coding2API
 
-八个上游——**CodeBuddy**（国内 + 国际）、**TRAE SOLO**、**OpenCode Zen**、**Kilo**、**Qoder**、**CodeArts**、**OfficeAce**——封装成 OpenAI 兼容 API：公共凭证池、统一模型名与调度、按人用量统计。
+九个上游——**CodeBuddy**（国内 + 国际）、**TRAE SOLO**、**OpenCode Zen**、**Kilo**、**Qoder**、**CodeArts**、**OfficeAce**、**自定义 OpenAI 兼容上游**——封装成 OpenAI 兼容 API：公共凭证池、统一模型名与调度、按人用量统计。
 
 > [!WARNING]
 > 逆向接口，仅供学习研究，未做安全审计；公网部署需反向代理 + 鉴权 + IP 白名单。
@@ -118,6 +118,7 @@ echo "$PASSWORD" | python3 scripts/create_user.py alice --role admin --password-
    - **TRAE**：粘凭证 JSON（`accessToken`/`uid`/`refreshToken`）或回调链接（`apiHost` 只收官方地址）。
    - **Qoder / CodeArts**：设备码 / OAuth2 授权码登录（CodeArts 授权后把打不开的本地回调链接粘回页面）。
    - **OfficeAce**：点「登录 OfficeAce」走华为云授权（回调由云端承接）。
+   - **自定义上游**：JSON 导入页选「自定义上游」，填上游地址 + API Key + 模型白名单（可选）；智谱 Coding Plan、DeepSeek 计费、自建 devin-2api/one-api 网关都走这里。
    - **OpenCode Zen / Kilo**：无需添加，启动自动出虚拟凭证（删了可在同面板补回）。
 2. 「API Key」建 `sk-...`（明文仅显示一次）。
 3. 调用：
@@ -156,7 +157,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 
 ### 流式超时（默认关闭）
 
-八条渠道上游流读取都是 `read=None` → 网关自兜：
+九条渠道上游流读取都是 `read=None` → 网关自兜：
 
 - **首事件超时**（`STREAM_FIRST_EVENT_TIMEOUT_SECONDS`，默认 0）：客户端未收到内容时超时 → 可安全换号重试，记 `upstream_first_event_timeout`。注释帧 / 心跳不重置计时。
 - **流内空闲超时**（`STREAM_IDLE_TIMEOUT_SECONDS`，默认 0）：已出帧后超时 → 断流 + 错误帧收尾，**不换号**（半截输出无法回滚）。
@@ -233,6 +234,14 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 **不主动探活 / 不估 credit**：探活要真发推理烧积分；`cost_coefficient` × `tokens_per_point` 关系官方未说明。模型级拒绝改由真实请求按 `BLOCKED` 负缓存处理。
 
 **签名与端点**：控制面 `/v1/claw/*` 用 `SDK-HMAC-SHA256`；模型网关只认 `V11-HMAC-SHA256`，用错 → `APIG.0624` 或 401。`OFFICEACE_ALLOWED_ENDPOINTS` 只需控制面主机（模型网关每账号不同，由上游签发存凭证）。`OFFICEACE_CHAT_MIN_INTERVAL` 默认 0。
+
+### 自定义上游（`openai_compat`）
+
+任意「`POST {base_url}/chat/completions` + Bearer key」的 OpenAI 兼容服务：智谱 GLM Coding Plan、DeepSeek 计费、MiniMax、豆包/火山方舟、自建 devin-2api / one-api / new-api 网关等。
+
+**凭证＝ `{base_url, api_key?, models?}`**：JSON 导入页有结构化表单，不用手写 JSON。`api_key` 留空走匿名（内网自建网关）；`models` 白名单留空则回退拉 `GET {base_url}/models`，填写后只暴露这些模型（省探测、可收子集）。
+
+**错误语义与匿名渠道相反**：401/403 是 key 坏了 → 硬禁用等改凭证（不会反复拿坏 key 重试）；402 余额不足 → 按额度耗尽冷却；429/404 只冷却被点名模型；400/422 归请求级不罚凭证；5xx 短暂冷却后重试。无额度探测——各家计费接口形状不一，健康度恒「无探测」。多条凭证各自独立（不同厂商各一条），调度与冷却口径与其他渠道一致；`PROVIDER_PROXIES` 可按 `openai_compat` 配单独出站代理。
 
 **单账号单用户**：官方《套餐管理》限制单账号单用户 → 不共用。
 

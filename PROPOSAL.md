@@ -1,14 +1,14 @@
 # Coding2API 设计文档
 
-**CodeBuddy**（国内 `codebuddy` + 国际 `codebuddy_intl`）、**TRAE SOLO**、**OpenCode Zen**、**Kilo**、**Qoder**、**CodeArts**、**OfficeAce** 八个上游 → OpenAI 兼容 API：公共凭证池、统一模型名与调度、按人用量统计。
+**CodeBuddy**（国内 `codebuddy` + 国际 `codebuddy_intl`）、**TRAE SOLO**、**OpenCode Zen**、**Kilo**、**Qoder**、**CodeArts**、**OfficeAce**、**自定义 OpenAI 兼容上游**（`openai_compat`）九个上游 → OpenAI 兼容 API：公共凭证池、统一模型名与调度、按人用量统计。
 
 > 只记仍成立的目标、上游事实、架构与约束。实现见 [TECHNICAL.md](TECHNICAL.md)，使用与部署见 [README.md](README.md)。
 
 ## 1. 目标与非目标
 
-**目标**：单一 OpenAI 兼容出口挂八个上游；`模型@渠道` 精确指定；凭证 admin 集中维护、全员共享；调度器自动挑健康号，上游死亡自动冷却；按人统计用量与估算成本。
+**目标**：单一 OpenAI 兼容出口挂九个上游；`模型@渠道` 精确指定；凭证 admin 集中维护、全员共享；调度器自动挑健康号，上游死亡自动冷却；按人统计用量与估算成本。
 
-**非目标**：不做配额/限流（上游订阅制，成本不随 token 线性增长，靠统计页可见性约束滥用）；不做通用 provider 网关（只硬编码这八个）；不做货币换算（上游积分互不通用，分开记）；不做数据迁移、自更新、mTLS。
+**非目标**：不做配额/限流（上游订阅制，成本不随 token 线性增长，靠统计页可见性约束滥用）；不做通用 provider 网关（只硬编码这九个，`openai_compat` 是唯一的用户可配上游类型）；不做货币换算（上游积分互不通用，分开记）；不做数据迁移、自更新、mTLS。
 
 ## 2. 上游可行性核实
 
@@ -103,7 +103,7 @@
 
 一个 FastAPI 进程内三平面，共享同一份 SQLite（WAL + `busy_timeout=5000`）与 Provider 客户端：
 
-- **请求面**（API Key 鉴权）：`/v1/chat/completions` · `/v1/responses` · `/v1/messages` · `/v1/models` · `/v1/user/balance` → 协议层 → 执行引擎（调度 · 冷却 · 会话粘性 · 截断续写 · 统计采集）→ 中立事件流 → 八个 Provider。
+- **请求面**（API Key 鉴权）：`/v1/chat/completions` · `/v1/responses` · `/v1/messages` · `/v1/models` · `/v1/user/balance` → 协议层 → 执行引擎（调度 · 冷却 · 会话粘性 · 截断续写 · 统计采集）→ 中立事件流 → 九个 Provider。
 - **管理面**（会话 Cookie + RBAC）：React 管理台 → `/api/*`。
 - **后台面**（无 HTTP 入口，`TaskRunner` 起 11 类循环）：额度探测 · token 预刷新 · 签到 · 成长中心 · 活跃上报 · 明细清理 · 备份 · 渠道模型列表刷新 · 模型目录刷新 · 运维告警 · 上游状态聚合。
 
